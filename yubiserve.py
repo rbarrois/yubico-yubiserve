@@ -171,8 +171,10 @@ class Yubiserve (BaseHTTPServer.BaseHTTPRequestHandler):
 					iso_time = time.strftime("%Y-%m-%dT%H:%M:%S")
 					try:
 						result = 't=' + iso_time + '\r\notp=' + getData['otp'] + '\r\nnonce=' + getData['nonce'] + '\r\nsl=100\r\nstatus=' + [k for k, v in otpvalidation.status.iteritems() if v == validation][0] + '\r\n'
+						orderedResult = 'nonce=' + getData['nonce'] + '&otp=' + getData['otp'] + '&sl=100&status=' + [k for k, v in otpvalidation.status.iteritems() if v == validation][0] + '&t=' + iso_time
 					except KeyError:
 						result = 't=' + iso_time + '\r\notp=' + getData['otp'] + '\r\nnonce=\r\nsl=100\r\nstatus=' + [k for k, v in otpvalidation.status.iteritems() if v == validation][0] + '\r\n'
+						orderedResult = 'nonce=&otp=' + getData['otp'] + 'sl=100&status=' + [k for k, v in otpvalidation.status.iteritems() if v == validation][0] + '&t=' + iso_time
 					otp_hmac = ''
 					try:
 						if (getData['id'] != None):
@@ -182,7 +184,7 @@ class Yubiserve (BaseHTTPServer.BaseHTTPRequestHandler):
 							cur.execute("SELECT secret from apikeys WHERE id = '" + apiID + "'")
 							if cur.rowcount != 0:
 								api_key = cur.fetchone()[0]
-								otp_hmac = hmac.new(api_key.decode('base64'), msg=result, digestmod=hashlib.sha1).hexdigest().decode('hex').encode('base64').strip()
+								otp_hmac = hmac.new(api_key, msg=orderedResult, digestmod=hashlib.sha1).hexdigest().decode('hex').encode('base64').strip()
 							else:
 								result = 't=' + iso_time + '\r\notp=' + getData['otp'] + '\r\nstatus=NO_CLIENT\r\n'
 					except KeyError:
@@ -195,10 +197,8 @@ class Yubiserve (BaseHTTPServer.BaseHTTPRequestHandler):
 			self.send_header('Content-type', 'text/plain')
 			self.end_headers()
 			iso_time = time.strftime("%Y-%m-%dT%H:%M:%S")
-			try:
-				result = 't=' + iso_time + '\r\notp=\r\nnonce=\r\nstatus=MISSING_PARAMETER\r\n'
-			except KeyError:
-					result = 't=' + iso_time + '\r\notp=\r\nnonce=\r\nstatus=MISSING_PARAMETER\r\n'
+			result = 't=' + iso_time + '\r\notp=\r\nnonce=\r\nstatus=MISSING_PARAMETER\r\n'
+			orderedResult = 'nonce=&otp=&status=MISSING_PARAMETER&t=' + iso_time
 			otp_hmac = ''
 			try:
 				if (getData['id'] != None):
@@ -208,7 +208,7 @@ class Yubiserve (BaseHTTPServer.BaseHTTPRequestHandler):
 					cur.execute("SELECT secret from apikeys WHERE id = '" + apiID + "'")
 					if cur.rowcount != 0:
 						api_key = cur.fetchone()[0]
-						otp_hmac = hmac.new(api_key.decode('base64'), msg=result, digestmod=hashlib.sha1).hexdigest().decode('hex').encode('base64').strip()
+						otp_hmac = hmac.new(api_key, msg=orderedResult, digestmod=hashlib.sha1).hexdigest().decode('hex').encode('base64').strip()
 			except KeyError:
 				pass
 			self.wfile.write('h=' + otp_hmac + '\r\n' + result + '\r\n')
@@ -243,12 +243,12 @@ class Yubiserve (BaseHTTPServer.BaseHTTPRequestHandler):
 							cur.execute("SELECT secret from apikeys WHERE id = '" + apiID + "'")
 							if cur.rowcount != 0:
 								api_key = cur.fetchone()[0]
-								otp_hmac = hmac.new(api_key.decode('base64'), msg=result, digestmod=hashlib.sha1).hexdigest().decode('hex').encode('base64').strip()
+								otp_hmac = hmac.new(api_key, msg=result, digestmod=hashlib.sha1).hexdigest().decode('hex').encode('base64').strip()
 							else:
 								result = 'otp=' + getData['otp'] + '\r\nstatus=NO_CLIENT\r\nt=' + iso_time
 					except KeyError:
 						pass
-					self.wfile.write(result + '\nh=' + otp_hmac)
+					self.wfile.write(result + '\r\nh=' + otp_hmac)
 					return
 				else:
 					self.send_response(200)
@@ -265,10 +265,10 @@ class Yubiserve (BaseHTTPServer.BaseHTTPRequestHandler):
 							cur.execute("SELECT secret from apikeys WHERE id = '" + apiID + "'")
 							if cur.rowcount != 0:
 								api_key = cur.fetchone()[0]
-								otp_hmac = hmac.new(api_key.decode('base64'), msg=result, digestmod=hashlib.sha1).hexdigest().decode('hex').encode('base64').strip()
+								otp_hmac = hmac.new(api_key, msg=result, digestmod=hashlib.sha1).hexdigest().decode('hex').encode('base64').strip()
 					except KeyError:
 						pass
-					self.wfile.write('h=' + otp_hmac + '\n' + result)
+					self.wfile.write('h=' + otp_hmac + '\r\n' + result)
 					return
 			except KeyError:
 				pass
@@ -286,10 +286,10 @@ class Yubiserve (BaseHTTPServer.BaseHTTPRequestHandler):
 					cur.execute("SELECT secret from apikeys WHERE id = '" + apiID + "'")
 					if cur.rowcount != 0:
 						api_key = cur.fetchone()[0]
-						otp_hmac = hmac.new(api_key.decode('base64'), msg=result, digestmod=hashlib.sha1).hexdigest().decode('hex').encode('base64').strip()
+						otp_hmac = hmac.new(api_key, msg=result, digestmod=hashlib.sha1).hexdigest().decode('hex').encode('base64').strip()
 			except KeyError:
 				pass
-			self.wfile.write('h=' + otp_hmac + '\n' + result)
+			self.wfile.write('h=' + otp_hmac + '\r\n' + result)
 			return
 	do_HEAD		= do_GET
 	do_PUT		= do_GET
