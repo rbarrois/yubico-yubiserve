@@ -90,7 +90,6 @@ class OTPValidation():
 				cur = con.cursor()
 				cur.execute('SELECT aeskey, internalname FROM yubikeys WHERE publicname = "' + self.userid + '" AND active = "true"')
 				if (cur.rowcount != 1):
-					print "1"
 					self.validationResult = self.status['BAD_OTP']
 					con.close()
 					return self.validationResult
@@ -98,12 +97,10 @@ class OTPValidation():
 				self.plaintext = self.aes128ecb_decrypt(self.aeskey, self.token)
 				uid = self.plaintext[:12]
 				if (self.internalname != uid):
-					print "2"
 					self.validationResult = self.status['BAD_OTP']
 					con.close()
 					return self.validationResult
 				if not (self.CRC() or self.isCRCValid()):
-					print "3"
 					self.validationResult = self.status['BAD_OTP']
 					con.close()
 					return self.validationResult
@@ -111,7 +108,6 @@ class OTPValidation():
 				self.timestamp = self.hexdec(self.plaintext[20:22] + self.plaintext[18:20] + self.plaintext[16:18])
 				cur.execute('SELECT counter, time FROM yubikeys WHERE publicname = "' + self.userid + '" AND active = "true"')
 				if (cur.rowcount != 1):
-					print "4"
 					self.validationResult = self.status['BAD_OTP']
 					con.close()
 					return self.validationResult
@@ -125,7 +121,6 @@ class OTPValidation():
 					con.close()
 					return self.validationResult
 		except IndexError:
-			print "5"
 			self.validationResult = self.status['BAD_OTP']
 			con.close()
 			return self.validationResult
