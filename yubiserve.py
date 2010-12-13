@@ -1,10 +1,13 @@
 #!/usr/bin/python
-import sqlite, re, os, time
+import sqlite, re, os, time, socket
 import urlparse, SocketServer, urllib, BaseHTTPServer
 from Crypto.Cipher import AES
+from OpenSSL import SSL
 import hmac, hashlib
+from threading import Thread
 
 yubiservePORT = 8000
+yubiserveSSLPORT = yubiservePORT + 1
 yubiserveHOST = '0.0.0.0'	# You can use '127.0.0.1' to avoid
 							# the server to receive queries from
 							# the outside
@@ -130,10 +133,10 @@ class OTPValidation():
 		con.close()
 		return self.validationResult
 
-class Yubiserve (BaseHTTPServer.BaseHTTPRequestHandler):
+class YubiServeHandler (BaseHTTPServer.BaseHTTPRequestHandler):
 	__base = BaseHTTPServer.BaseHTTPRequestHandler
 	__base_handle = __base.handle
-	server_version = 'Yubiserve/2.0'
+	server_version = 'Yubiserve/3.0'
 	print 'HTTP Server is running.'
 
 	def getToDict(self, qs):
@@ -142,6 +145,10 @@ class Yubiserve (BaseHTTPServer.BaseHTTPRequestHandler):
 			keyVal = singleValue.split('=')
 			dict[urllib.unquote_plus(keyVal[0])] = urllib.unquote_plus(keyVal[1])
 		return dict
+	def setup(self):
+		self.connection = self.request
+		self.rfile = socket._fileobject(self.request, "rb", self.rbufsize)
+		self.wfile = socket._fileobject(self.request, "wb", self.wbufsize)
 	def log_message(self, format, *args):
 		pass
 	def do_GET(self):
@@ -297,11 +304,42 @@ class Yubiserve (BaseHTTPServer.BaseHTTPRequestHandler):
 	do_CONNECT	= do_GET
 	do_POST		= do_GET
 
-class ThreadingHTTPServer (SocketServer.ThreadingMixIn, BaseHTTPServer.HTTPServer): pass
+class SecureHTTPServer(BaseHTTPServer.HTTPServer):
+	def __init__(self, server_address, HandlerClass):
+		BaseHTTPServer.HTTPServer.__init__(self, server_address, HandlerClass)
+		ctx = SSL.Context(SSL.SSLv23_METHOD)
+		fpem = os.path.dirname(os.path.realpath(__file__)) + '/yubiserve.pem'
+		ctx.use_privatekey_file (fpem)
+		ctx.use_certificate_file(fpem)
+		self.socket = SSL.Connection(ctx, socket.socket(self.address_family, self.socket_type))
+		self.server_bind()
+		self.server_activate()
 
-yubiserve = ThreadingHTTPServer((yubiserveHOST, yubiservePORT), Yubiserve)
+class ThreadingHTTPServer (SocketServer.ThreadingMixIn, BaseHTTPServer.HTTPServer): pass
+class ThreadingHTTPSServer (SocketServer.ThreadingMixIn, SecureHTTPServer): pass
+
+yubiserveHTTP = ThreadingHTTPServer((yubiserveHOST, yubiservePORT), YubiServeHandler)
+yubiserveSSL = ThreadingHTTPSServer((yubiserveHOST, yubiserveSSLPORT), YubiServeHandler)
+
+http_thread = Thread(target=yubiserveHTTP.serve_forever)
+ssl_thread = Thread(target=yubiserveSSL.serve_forever)
+
+http_thread.setDaemon(True)
+ssl_thread.setDaemon(True)
+
+http_thread.start()
+ssl_thread.start()
+
+while 1:
+	time.sleep(1)
+
+"""
+
 try:
 	yubiserve.serve_forever()
+	yubiserveSSL.serve_forever()
 except KeyboardInterrupt:
 	print ""
 	yubiserve.server_close()
+	yubiserveSSL.server_close()
+"""
