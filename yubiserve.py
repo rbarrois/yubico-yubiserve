@@ -136,7 +136,7 @@ class OTPValidation():
 class YubiServeHandler (BaseHTTPServer.BaseHTTPRequestHandler):
 	__base = BaseHTTPServer.BaseHTTPRequestHandler
 	__base_handle = __base.handle
-	server_version = 'Yubiserve/3.0'
+	server_version = 'Yubiserve/2.9'
 	print 'HTTP Server is running.'
 
 	def getToDict(self, qs):
