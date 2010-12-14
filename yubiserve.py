@@ -1,20 +1,40 @@
 #!/usr/bin/python
-import sqlite, re, os, time, socket
+import re, os, time, socket
 import urlparse, SocketServer, urllib, BaseHTTPServer
 from Crypto.Cipher import AES
 from OpenSSL import SSL
 import hmac, hashlib
 from threading import Thread
+try:
+	import MySQLdb
+except ImportError:
+	pass
+try:
+	import sqlite
+except ImportError:
+	pass
 
-yubiservePORT = 8000
-yubiserveSSLPORT = yubiservePORT + 1
-yubiserveHOST = '0.0.0.0'	# You can use '127.0.0.1' to avoid
-							# the server to receive queries from
-							# the outside
+def parseConfigFile():	# Originally I wrote this function to parse PHP configuration files!
+	config = open(os.path.dirname(os.path.realpath(__file__)) + '/yubiserve.cfg', 'r').read().splitlines()
+	keys = {}
+	for line in config:
+		match = re.search('(.*?)=(.*);', line)
+		try: # Check if it's a string or a number
+			if ((match.group(2).strip()[0] != '"') and (match.group(2).strip()[0] != '\'')):
+				keys[match.group(1).strip()] = int(match.group(2).strip())
+			else:
+				keys[match.group(1).strip()] = match.group(2).strip('"\' ')
+		except:
+			pass
+	return keys
+
+config = parseConfigFile()
 
 class OATHValidation():
-	status = {'OK': 1, 'BAD_OTP': 2, 'NO_AUTH': 3, 'NO_CLIENT': 5}
-	validationResult = 0
+	def __init__(self, connection):
+		self.status = {'OK': 1, 'BAD_OTP': 2, 'NO_AUTH': 3, 'NO_CLIENT': 5}
+		self.validationResult = 0
+		self.con = connection
 	def testHOTP(self, K, C, digits=6):
 		counter = ("%x"%C).rjust(16,'0').decode('hex') # Convert it into 8 bytes hex
 		HS = hmac.new(K, counter, hashlib.sha1).digest()
@@ -23,9 +43,8 @@ class OATHValidation():
 		bin_code = int((chr(ord(HS[offset]) & 0x7F) + HS[offset+1:offset+4]).encode('hex'),16)
 		return str(bin_code)[-digits:]
 	def validateOATH(self, OATH, publicID):
-		con = sqlite.connect(os.path.dirname(os.path.realpath(__file__)) + '/yubikeys.sqlite')
-		cur = con.cursor()
-		cur.execute("SELECT counter, secret FROM oathtokens WHERE publicname = '" + publicID + "' AND active = 'true'")
+		cur = self.con.cursor()
+		cur.execute("SELECT counter, secret FROM oathtokens WHERE publicname = '" + publicID + "' AND active = '1'")
 		if (cur.rowcount != 1):
 			validationResult = self.status['BAD_OTP']
 			return validationResult
@@ -37,15 +56,16 @@ class OATHValidation():
 		K = key.decode('hex') # key
 		for C in range(actualcounter+1, actualcounter+256):
 			if OATH == self.testHOTP(K, C, len(OATH)):
-				cur.execute("UPDATE oathtokens SET counter = " + str(C) + " WHERE publicname = '" + publicID + "' AND active = 'true'")
-				con.commit()
+				cur.execute("UPDATE oathtokens SET counter = " + str(C) + " WHERE publicname = '" + publicID + "' AND active = '1'")
+				self.con.commit()
 				return self.status['OK']
 		return self.status['NO_AUTH']
 
 class OTPValidation():
-	status = {'OK': 1, 'BAD_OTP': 2, 'REPLAYED_OTP': 3, 'DELAYED_OTP': 4, 'NO_CLIENT': 5}
-	validationResult = 0
-	
+	def __init__(self, connection):
+		self.status = {'OK': 1, 'BAD_OTP': 2, 'REPLAYED_OTP': 3, 'DELAYED_OTP': 4, 'NO_CLIENT': 5}
+		self.validationResult = 0
+		self.con = connection
 	def hexdec(self, hex):
 		return int(hex, 16)
 	def modhex2hex(self, string):
@@ -89,56 +109,55 @@ class OTPValidation():
 			if match.group(1) and match.group(2):
 				self.userid = match.group(1)
 				self.token = self.modhex2hex(match.group(2))
-				con = sqlite.connect(os.path.dirname(os.path.realpath(__file__)) + '/yubikeys.sqlite')
-				cur = con.cursor()
-				cur.execute('SELECT aeskey, internalname FROM yubikeys WHERE publicname = "' + self.userid + '" AND active = "true"')
+				cur = self.con.cursor()
+				cur.execute('SELECT aeskey, internalname FROM yubikeys WHERE publicname = "' + self.userid + '" AND active = "1"')
 				if (cur.rowcount != 1):
 					self.validationResult = self.status['BAD_OTP']
-					con.close()
 					return self.validationResult
 				(self.aeskey, self.internalname) = cur.fetchone()
 				self.plaintext = self.aes128ecb_decrypt(self.aeskey, self.token)
 				uid = self.plaintext[:12]
 				if (self.internalname != uid):
 					self.validationResult = self.status['BAD_OTP']
-					con.close()
 					return self.validationResult
 				if not (self.CRC() or self.isCRCValid()):
 					self.validationResult = self.status['BAD_OTP']
-					con.close()
 					return self.validationResult
 				self.internalcounter = self.hexdec(self.plaintext[14:16] + self.plaintext[12:14] + self.plaintext[22:24])
 				self.timestamp = self.hexdec(self.plaintext[20:22] + self.plaintext[18:20] + self.plaintext[16:18])
-				cur.execute('SELECT counter, time FROM yubikeys WHERE publicname = "' + self.userid + '" AND active = "true"')
+				cur.execute('SELECT counter, time FROM yubikeys WHERE publicname = "' + self.userid + '" AND active = "1"')
 				if (cur.rowcount != 1):
 					self.validationResult = self.status['BAD_OTP']
-					con.close()
 					return self.validationResult
 				(self.counter, self.time) = cur.fetchone()
 				if (self.counter) >= (self.internalcounter):
 					self.validationResult = self.status['REPLAYED_OTP']
-					con.close()
 					return self.validationResult
 				if (self.time >= self.timestamp) and ((self.counter >> 8) == (self.internalcounter >> 8)):
 					self.validationResult = self.status['DELAYED_OTP']
-					con.close()
 					return self.validationResult
 		except IndexError:
 			self.validationResult = self.status['BAD_OTP']
-			con.close()
 			return self.validationResult
 		self.validationResult = self.status['OK']
 		cur.execute('UPDATE yubikeys SET counter = ' + str(self.internalcounter) + ', time = ' + str(self.timestamp) + ' WHERE publicname = "' + self.userid + '"')
-		con.commit()
-		con.close()
+		self.con.commit()
 		return self.validationResult
 
 class YubiServeHandler (BaseHTTPServer.BaseHTTPRequestHandler):
 	__base = BaseHTTPServer.BaseHTTPRequestHandler
 	__base_handle = __base.handle
-	server_version = 'Yubiserve/2.9'
-	print 'HTTP Server is running.'
-
+	server_version = 'Yubiserve/3.0'
+	global config
+	#try:
+	if config['yubiDB'] == 'sqlite':
+		con = sqlite.connect(os.path.dirname(os.path.realpath(__file__)) + '/yubikeys.sqlite')
+	elif config['yubiDB'] == 'mysql':
+		con = MySQLdb.connect(host=config['yubiMySQLHost'], user=config['yubiMySQLUser'], passwd=config['yubiMySQLPass'], db=config['yubiMySQLName'])
+	#except:
+	#	print "There's a problem with the database!\n"
+	#	quit()
+	
 	def getToDict(self, qs):
 		dict = {}
 		for singleValue in qs.split('&'):
@@ -170,7 +189,7 @@ class YubiServeHandler (BaseHTTPServer.BaseHTTPRequestHandler):
 			try:
 				if len(query) > 0:
 					getData = self.getToDict(query)
-					otpvalidation = OTPValidation()
+					otpvalidation = OTPValidation(self.con)
 					validation = otpvalidation.validateOTP(getData['otp'])
 					self.send_response(200)
 					self.send_header('Content-type', 'text/plain')
@@ -186,8 +205,7 @@ class YubiServeHandler (BaseHTTPServer.BaseHTTPRequestHandler):
 					try:
 						if (getData['id'] != None):
 							apiID = re.escape(getData['id'])
-							con = sqlite.connect(os.path.dirname(os.path.realpath(__file__)) + '/yubikeys.sqlite')
-							cur = con.cursor()
+							cur = self.con.cursor()
 							cur.execute("SELECT secret from apikeys WHERE id = '" + apiID + "'")
 							if cur.rowcount != 0:
 								api_key = cur.fetchone()[0]
@@ -210,8 +228,7 @@ class YubiServeHandler (BaseHTTPServer.BaseHTTPRequestHandler):
 			try:
 				if (getData['id'] != None):
 					apiID = re.escape(getData['id'])
-					con = sqlite.connect(os.path.dirname(os.path.realpath(__file__)) + '/yubikeys.sqlite')
-					cur = con.cursor()
+					cur = self.con.cursor()
 					cur.execute("SELECT secret from apikeys WHERE id = '" + apiID + "'")
 					if cur.rowcount != 0:
 						api_key = cur.fetchone()[0]
@@ -224,7 +241,7 @@ class YubiServeHandler (BaseHTTPServer.BaseHTTPRequestHandler):
 			try:
 				getData = self.getToDict(query)
 				if (len(query) > 0) and ((len(getData['otp']) == 6) or (len(getData['otp']) == 8) or (len(getData['otp']) == 18) or (len(getData['otp']) == 20)):
-					oathvalidation = OATHValidation()
+					oathvalidation = OATHValidation(self.con)
 					OTP = getData['otp']
 					if (len(OTP) == 18) or (len(OTP) == 20):
 						publicID = OTP[0:12]
@@ -245,8 +262,7 @@ class YubiServeHandler (BaseHTTPServer.BaseHTTPRequestHandler):
 					try:
 						if (getData['id'] != None):
 							apiID = re.escape(getData['id'])
-							con = sqlite.connect(os.path.dirname(os.path.realpath(__file__)) + '/yubikeys.sqlite')
-							cur = con.cursor()
+							cur = self.con.cursor()
 							cur.execute("SELECT secret from apikeys WHERE id = '" + apiID + "'")
 							if cur.rowcount != 0:
 								api_key = cur.fetchone()[0]
@@ -267,8 +283,7 @@ class YubiServeHandler (BaseHTTPServer.BaseHTTPRequestHandler):
 					try:
 						if (getData['id'] != None):
 							apiID = re.escape(getData['id'])
-							con = sqlite.connect(os.path.dirname(os.path.realpath(__file__)) + '/yubikeys.sqlite')
-							cur = con.cursor()
+							cur = self.con.cursor()
 							cur.execute("SELECT secret from apikeys WHERE id = '" + apiID + "'")
 							if cur.rowcount != 0:
 								api_key = cur.fetchone()[0]
@@ -288,8 +303,7 @@ class YubiServeHandler (BaseHTTPServer.BaseHTTPRequestHandler):
 			try:
 				if (getData['id'] != None):
 					apiID = re.escape(getData['id'])
-					con = sqlite.connect(os.path.dirname(os.path.realpath(__file__)) + '/yubikeys.sqlite')
-					cur = con.cursor()
+					cur = self.con.cursor()
 					cur.execute("SELECT secret from apikeys WHERE id = '" + apiID + "'")
 					if cur.rowcount != 0:
 						api_key = cur.fetchone()[0]
@@ -318,8 +332,25 @@ class SecureHTTPServer(BaseHTTPServer.HTTPServer):
 class ThreadingHTTPServer (SocketServer.ThreadingMixIn, BaseHTTPServer.HTTPServer): pass
 class ThreadingHTTPSServer (SocketServer.ThreadingMixIn, SecureHTTPServer): pass
 
-yubiserveHTTP = ThreadingHTTPServer((yubiserveHOST, yubiservePORT), YubiServeHandler)
-yubiserveSSL = ThreadingHTTPSServer((yubiserveHOST, yubiserveSSLPORT), YubiServeHandler)
+try:
+	if MySQLdb != None:
+		isThereMysql = True
+except NameError:
+	isThereMysql = False
+try:
+	if sqlite != None:
+		isThereSqlite = True
+except NameError:
+	isThereSqlite = False
+if isThereMysql == isThereSqlite == False:
+	print "Cannot continue without any database support.\nPlease read README.\n\n"
+	quit()
+if config['yubiDB'] == 'mysql' and (config['yubiMySQLHost'] == '' or config['yubiMySQLUser'] == '' or config['yubiMySQLPass'] == '' or config['yubiMySQLName'] == ''):
+	print "Cannot continue without any MySQL configuration.\nPlease read README.\n\n"
+	quit()
+
+yubiserveHTTP = ThreadingHTTPServer((config['yubiserveHOST'], config['yubiservePORT']), YubiServeHandler)
+yubiserveSSL = ThreadingHTTPSServer((config['yubiserveHOST'], config['yubiserveSSLPORT']), YubiServeHandler)
 
 http_thread = Thread(target=yubiserveHTTP.serve_forever)
 ssl_thread = Thread(target=yubiserveSSL.serve_forever)
@@ -330,16 +361,7 @@ ssl_thread.setDaemon(True)
 http_thread.start()
 ssl_thread.start()
 
+print "HTTP Server is running."
+
 while 1:
 	time.sleep(1)
-
-"""
-
-try:
-	yubiserve.serve_forever()
-	yubiserveSSL.serve_forever()
-except KeyboardInterrupt:
-	print ""
-	yubiserve.server_close()
-	yubiserveSSL.server_close()
-"""

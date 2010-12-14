@@ -3,10 +3,11 @@ YubiServe has been written by Alessio Periloso <mail *at* periloso.it>
 Version 1.0: 21/05/2010
 Version 2.0: 19/11/2010
 Version 2.9: 13/12/2010
+Version 3.0: 14/12/2010
 
                       == Description ==
 This simple service allows to authenticate Yubikeys and OATH Tokens using
-only a small sqlite database.
+only a small sqlite database (the mysql support is optional!)
 The code has been released under GNU license (license into LICENSE file)
 
 The project is divided into two parts:
@@ -17,12 +18,20 @@ The project is divided into two parts:
                        == Installation ==
 Installation is pretty simple, you just have to install few python packages:
 Under Debian, you can run:
-apt-get install python python-sqlite python-crypto python-openssl
+apt-get install python python-crypto python-openssl
+If you want to add the sqlite support, you should run:
+apt-get install python-sqlite
+Or, if you want to add the mysql support, you should run:
+apt-get install python-mysqldb
+If you chosen the mysql support, you must create a database and create the
+tables. The mysql dump is at src/dump.mysql.
 Then, you have to generate the certificate for ssl validation, so if you don't
 already have a certificate you have to issue the following command to self-sign
 one:
 openssl req -new -x509 -keyout yubiserve.pem -out yubiserve.pem -days 365 -nodes
-That's all, yes!
+
+A good idea would be taking a look at yubiserve.cfg, to configure the validation server settings.
+
 After installing the needed packages, you just need to extract the files
 to a directory, add the keys and launch the server (or, if you prefer
 you can launch the server before adding the keys, it doesn't matter).

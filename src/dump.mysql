@@ -1,0 +1,61 @@
+SET SQL_MODE="NO_AUTO_VALUE_ON_ZERO";
+
+
+/*!40101 SET @OLD_CHARACTER_SET_CLIENT=@@CHARACTER_SET_CLIENT */;
+/*!40101 SET @OLD_CHARACTER_SET_RESULTS=@@CHARACTER_SET_RESULTS */;
+/*!40101 SET @OLD_COLLATION_CONNECTION=@@COLLATION_CONNECTION */;
+/*!40101 SET NAMES utf8 */;
+
+--
+-- Database: `yubikeys`
+--
+
+-- --------------------------------------------------------
+
+--
+-- Table `apikeys`
+--
+
+CREATE TABLE IF NOT EXISTS `apikeys` (
+  `nickname` varchar(16) default NULL,
+  `secret` varchar(28) default NULL,
+  `id` int(11) NOT NULL,
+  PRIMARY KEY  (`id`)
+) ENGINE=MyISAM DEFAULT CHARSET=utf8;
+
+-- --------------------------------------------------------
+
+--
+-- Table `oathtokens`
+--
+
+CREATE TABLE IF NOT EXISTS `oathtokens` (
+  `nickname` varchar(16) NOT NULL,
+  `publicname` varchar(12) NOT NULL,
+  `created` varchar(24) NOT NULL,
+  `secret` varchar(40) NOT NULL,
+  `active` tinyint(1) default '1',
+  `counter` int(11) NOT NULL default '1',
+  UNIQUE KEY `nickname` (`nickname`),
+  UNIQUE KEY `publicname` (`publicname`)
+) ENGINE=MyISAM DEFAULT CHARSET=utf8;
+
+-- --------------------------------------------------------
+
+--
+-- Table `yubikeys`
+--
+
+CREATE TABLE IF NOT EXISTS `yubikeys` (
+  `nickname` varchar(16) NOT NULL,
+  `publicname` varchar(16) NOT NULL,
+  `created` varchar(24) NOT NULL,
+  `internalname` varchar(12) NOT NULL,
+  `aeskey` varchar(32) NOT NULL,
+  `active` tinyint(1) default '1',
+  `counter` int(11) NOT NULL default '1',
+  `time` int(11) NOT NULL default '1',
+  UNIQUE KEY `nickname` (`nickname`),
+  UNIQUE KEY `publicname` (`publicname`)
+) ENGINE=MyISAM DEFAULT CHARSET=utf8;
+

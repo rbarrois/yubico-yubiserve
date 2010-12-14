@@ -1,6 +1,28 @@
 #!/usr/bin/python
-import sqlite, time, random, re
+import time, random, re, os
 from sys import argv
+try:
+	import MySQLdb
+except ImportError:
+	pass
+try:
+	import sqlite
+except ImportError:
+	pass
+
+def parseConfigFile():	# Originally I wrote this function to parse PHP configuration files!
+	config = open(os.path.dirname(os.path.realpath(__file__)) + '/yubiserve.cfg', 'r').read().splitlines()
+	keys = {}
+	for line in config:
+		match = re.search('(.*?)=(.*);', line)
+		try: # Check if it's a string or a number
+			if ((match.group(2).strip()[0] != '"') and (match.group(2).strip()[0] != '\'')):
+				keys[match.group(1).strip()] = int(match.group(2).strip())
+			else:
+				keys[match.group(1).strip()] = match.group(2).strip('"\' ')
+		except:
+			pass
+	return keys
 
 def randomChars(max):
 	retVal = ''
@@ -14,7 +36,30 @@ def randomChars(max):
 			retVal += chr(rand+47)
 	return retVal
 
-con = sqlite.connect('yubikeys.sqlite')
+config = parseConfigFile()
+try:
+	if MySQLdb != None:
+		isThereMysql = True
+except NameError:
+	isThereMysql = False
+try:
+	if sqlite != None:
+		isThereSqlite = True
+except NameError:
+	isThereSqlite = False
+if isThereMysql == isThereSqlite == False:
+	print "Cannot continue without any database support.\nPlease read README.\n\n"
+	quit()
+if config['yubiDB'] == 'mysql' and (config['yubiMySQLHost'] == '' or config['yubiMySQLUser'] == '' or config['yubiMySQLPass'] == '' or config['yubiMySQLName'] == ''):
+	print "Cannot continue without any MySQL configuration.\nPlease read README.\n\n"
+	quit()
+try:
+	if config['yubiDB'] == 'sqlite':
+		con = sqlite.connect(os.path.dirname(os.path.realpath(__file__)) + '/yubikeys.sqlite')
+	elif config['yubiDB'] == 'mysql':
+		con = MySQLdb.connect(host=config['yubiMySQLHost'], user=config['yubiMySQLUser'], passwd=config['yubiMySQLPass'], db=config['yubiMySQLName'])
+except:
+	print "There's a problem with the database!\n"
 cur = con.cursor()
 
 if (len(argv)<2):
@@ -43,9 +88,9 @@ else:
 			if (cur.rowcount == 0):
 				print 'Key not found.'
 			else:
-				cur.execute("SELECT * FROM yubikeys WHERE nickname = '" + nickname + "' AND active = 'true'")
+				cur.execute("SELECT * FROM yubikeys WHERE nickname = '" + nickname + "' AND active = '1'")
 				if (cur.rowcount == 1):
-					cur.execute("UPDATE yubikeys SET active = 'false' WHERE nickname = '" + nickname + "'")
+					cur.execute("UPDATE yubikeys SET active = '1' WHERE nickname = '" + nickname + "'")
 					print "Key '" + nickname + "' disabled."
 					con.commit()
 				else:
@@ -57,9 +102,9 @@ else:
 			if (cur.rowcount == 0):
 				print 'Key not found.'
 			else:
-				cur.execute("SELECT * FROM yubikeys WHERE nickname = '" + nickname + "' AND active = 'false'")
+				cur.execute("SELECT * FROM yubikeys WHERE nickname = '" + nickname + "' AND active = '1'")
 				if (cur.rowcount == 1):
-					cur.execute("UPDATE yubikeys SET active = 'true' WHERE nickname = '" + nickname + "'")
+					cur.execute("UPDATE yubikeys SET active = '1' WHERE nickname = '" + nickname + "'")
 					print "Key '" + nickname + "' enabled."
 					con.commit()
 				else:
@@ -107,9 +152,9 @@ else:
 			if (cur.rowcount == 0):
 				print 'Key not found.'
 			else:
-				cur.execute("SELECT * FROM oathtokens WHERE nickname = '" + nickname + "' AND active = 'true'")
+				cur.execute("SELECT * FROM oathtokens WHERE nickname = '" + nickname + "' AND active = '1'")
 				if (cur.rowcount == 1):
-					cur.execute("UPDATE oathtokens SET active = 'false' WHERE nickname = '" + nickname + "'")
+					cur.execute("UPDATE oathtokens SET active = '1' WHERE nickname = '" + nickname + "'")
 					print "Key '" + nickname + "' disabled."
 					con.commit()
 				else:
@@ -121,9 +166,9 @@ else:
 			if (cur.rowcount == 0):
 				print 'Key not found.'
 			else:
-				cur.execute("SELECT * FROM oathtokens WHERE nickname = '" + nickname + "' AND active = 'false'")
+				cur.execute("SELECT * FROM oathtokens WHERE nickname = '" + nickname + "' AND active = '1'")
 				if (cur.rowcount == 1):
-					cur.execute("UPDATE oathtokens SET active = 'true' WHERE nickname = '" + nickname + "'")
+					cur.execute("UPDATE oathtokens SET active = '1' WHERE nickname = '" + nickname + "'")
 					print "Key '" + nickname + "' enabled."
 					con.commit()
 				else:
