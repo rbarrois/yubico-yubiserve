@@ -123,7 +123,7 @@ else:
 			if ((len(argv[2])<=16) and (len(argv[3]) <= 16) and (len(argv[4]) <= 12) and (len(argv[5])<=32)):
 				cur.execute("SELECT * FROM yubikeys WHERE nickname = '" + argv[2] + "' OR publicname = '" + argv[3] + "'")
 				if (cur.rowcount == 0):
-					cur.execute("INSERT INTO yubikeys VALUES ('" + argv[2] + "', '" + argv[3] + "', '" + time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()) + "', '" + argv[4] + "', '" + argv[5] + "', 'true', 1, 1)")
+					cur.execute("INSERT INTO yubikeys VALUES ('" + argv[2] + "', '" + argv[3] + "', '" + time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()) + "', '" + argv[4] + "', '" + argv[5] + "', 1, 1, 1)")
 					con.commit()
 					print "Key '" + argv[2] + "' added to database."
 				else:
@@ -133,13 +133,13 @@ else:
 				print 'Secretid must be 12 characters max, aeskey must be 32 characters max.\n'
 				quit()
 		elif (argv[1][2] == 'l'):
-			cur.execute('SELECT nickname, publicname FROM yubikeys')
+			cur.execute('SELECT nickname, publicname, active FROM yubikeys')
 			if cur.rowcount != 0:
 				print " " + str(cur.rowcount) + " keys into database:"
 				print '[Nickname]\t\t>> [PublicID]'
 				for i in range(0, cur.rowcount):
-					(nickname, publicname) = cur.fetchone()
-					print ' ' + nickname + ' ' * (23-len(nickname)) + ">> " + publicname
+					(nickname, publicname, active) = cur.fetchone()
+					print ' ' + nickname + ' ' * (23-len(nickname)) + ">> " + publicname + ' ' * (21-len(publicname)) + ">> " + active
 				print ''
 			else:
 				print 'No keys in database\n'
@@ -187,7 +187,7 @@ else:
 			if (len(argv[2])<=16) and (len(argv[3]) <= 16) and (len(argv[4]) <= 40):
 				cur.execute("SELECT * FROM oathtokens WHERE nickname = '" + argv[2] + "' OR publicname = '" + argv[3] + "'")
 				if (cur.rowcount == 0):
-					cur.execute("INSERT INTO oathtokens VALUES ('" + nickname + "', '" + argv[3] + "', '" + time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()) + "', '" + argv[4] + "', 'true', 1)")
+					cur.execute("INSERT INTO oathtokens VALUES ('" + nickname + "', '" + argv[3] + "', '" + time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()) + "', '" + argv[4] + "', 1, 1)")
 					con.commit()
 					print "Key '" + argv[2] + "' added to database."
 				else:
