@@ -1,6 +1,7 @@
 #!/usr/bin/python
 import time, random, re, os
 from sys import argv
+
 try:
 	import MySQLdb
 except ImportError:
@@ -42,17 +43,21 @@ try:
 		isThereMysql = True
 except NameError:
 	isThereMysql = False
+
 try:
 	if sqlite != None:
 		isThereSqlite = True
 except NameError:
 	isThereSqlite = False
+
 if isThereMysql == isThereSqlite == False:
 	print "Cannot continue without any database support.\nPlease read README.\n\n"
 	quit()
+
 if config['yubiDB'] == 'mysql' and (config['yubiMySQLHost'] == '' or config['yubiMySQLUser'] == '' or config['yubiMySQLPass'] == '' or config['yubiMySQLName'] == ''):
 	print "Cannot continue without any MySQL configuration.\nPlease read README.\n\n"
 	quit()
+
 try:
 	if config['yubiDB'] == 'sqlite':
 		con = sqlite.connect(os.path.dirname(os.path.realpath(__file__)) + '/yubikeys.sqlite')
@@ -246,4 +251,4 @@ else:
 				print ''
 			else:
 				print 'No keys in database\n'
-			
+

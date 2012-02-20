@@ -41,11 +41,13 @@ def parseConfigFile():  # Originally I wrote this function to parse PHP configur
 
 config = parseConfigFile()
 
+
 class OATHValidation():
     def __init__(self, connection):
         self.status = {'OK': 1, 'BAD_OTP': 2, 'NO_AUTH': 3, 'NO_CLIENT': 5}
         self.validationResult = 0
         self.con = connection
+
     def testHOTP(self, K, C, digits=6):
         counter = ("%x"%C).rjust(16,'0').decode('hex') # Convert it into 8 bytes hex
         HS = hmac.new(K, counter, hashlib.sha1).digest()
@@ -53,6 +55,7 @@ class OATHValidation():
         # It doesn't look pretty, but it is optimized! :D
         bin_code = int((chr(ord(HS[offset]) & 0x7F) + HS[offset+1:offset+4]).encode('hex'),16)
         return str(bin_code)[-digits:]
+
     def validateOATH(self, OATH, publicID):
         cur = self.con.cursor()
         cur.execute("SELECT counter, secret FROM oathtokens WHERE publicname = '" + publicID + "' AND active = '1'")
@@ -72,13 +75,17 @@ class OATHValidation():
                 return self.status['OK']
         return self.status['NO_AUTH']
 
+
 class OTPValidation():
+
     def __init__(self, connection):
         self.status = {'OK': 1, 'BAD_OTP': 2, 'REPLAYED_OTP': 3, 'DELAYED_OTP': 4, 'NO_CLIENT': 5}
         self.validationResult = 0
         self.con = connection
+
     def hexdec(self, hex):
         return int(hex, 16)
+
     def modhex2hex(self, string):
         hex = "0123456789abcdef"
         modhex = "cbdefghijklnrtuv"
@@ -90,6 +97,7 @@ class OTPValidation():
             else:
                 raise Exception, '"' + string[i] + '": Character is not a valid hex string'
         return retVal
+
     def CRC(self):
         crc = 0xffff;
         for i in range(0, 16):
@@ -101,14 +109,19 @@ class OTPValidation():
                     crc = crc ^ 0x8408
         self.OTPcrc = crc
         return [crc]
+
     def isCRCValid(self):
         return (self.crc == 0xf0b8)
+
     def aes128ecb_decrypt(self, aeskey, aesdata):
         return AES.new(aeskey.decode('hex'), AES.MODE_ECB).decrypt(aesdata.decode('hex')).encode('hex')
+
     def getResult(self):
         return self.validationResult
+
     def getResponse(self):
         return self.validationResponse
+
     def validateOTP(self, OTP):
         self.OTP = re.escape(OTP)
         self.validationResult = 0
@@ -158,7 +171,9 @@ class OTPValidation():
 class YubiServeHandler (BaseHTTPServer.BaseHTTPRequestHandler):
     __base = BaseHTTPServer.BaseHTTPRequestHandler
     __base_handle = __base.handle
+
     server_version = 'Yubiserve/3.0'
+
     global config
     #try:
     if config['yubiDB'] == 'sqlite':
@@ -175,12 +190,15 @@ class YubiServeHandler (BaseHTTPServer.BaseHTTPRequestHandler):
             keyVal = singleValue.split('=')
             dict[urllib.unquote_plus(keyVal[0])] = urllib.unquote_plus(keyVal[1])
         return dict
+
     def setup(self):
         self.connection = self.request
         self.rfile = socket._fileobject(self.request, "rb", self.rbufsize)
         self.wfile = socket._fileobject(self.request, "wb", self.wbufsize)
+
     def log_message(self, format, *args):
         pass
+
     def do_GET(self):
         (scm, netloc, path, params, query, fragment) = urlparse.urlparse(self.path, 'http')
         if scm != 'http':
@@ -196,6 +214,7 @@ class YubiServeHandler (BaseHTTPServer.BaseHTTPRequestHandler):
             # OATH HOTP
             self.wfile.write('OATH/HOTP tokens:<br><form action="/wsapi/2.0/oathverify" method="GET"><input type="text" name="otp"><br><input type="text" name="publicid"><br><input type="submit"></form>')
             self.wfile.write('</html>')
+
         elif path == '/wsapi/2.0/verify': # Yubico Yubikey
             try:
                 if len(query) > 0:
@@ -227,8 +246,10 @@ class YubiServeHandler (BaseHTTPServer.BaseHTTPRequestHandler):
                         pass
                     self.wfile.write('h=' + otp_hmac + '\r\n' + result + '\r\n')
                     return
+
             except KeyError:
                 pass
+
             self.send_response(200)
             self.send_header('Content-type', 'text/plain')
             self.end_headers()
@@ -246,8 +267,10 @@ class YubiServeHandler (BaseHTTPServer.BaseHTTPRequestHandler):
                         otp_hmac = hmac.new(api_key, msg=orderedResult, digestmod=hashlib.sha1).hexdigest().decode('hex').encode('base64').strip()
             except KeyError:
                 pass
+
             self.wfile.write('h=' + otp_hmac + '\r\n' + result + '\r\n')
             return
+
         elif path == '/wsapi/2.0/oathverify': # OATH HOTP
             try:
                 getData = self.getToDict(query)
@@ -323,6 +346,7 @@ class YubiServeHandler (BaseHTTPServer.BaseHTTPRequestHandler):
                 pass
             self.wfile.write('h=' + otp_hmac + '\r\n' + result)
             return
+
     do_HEAD     = do_GET
     do_PUT      = do_GET
     do_DELETE   = do_GET
@@ -340,22 +364,27 @@ class SecureHTTPServer(BaseHTTPServer.HTTPServer):
         self.server_bind()
         self.server_activate()
 
-class ThreadingHTTPServer (SocketServer.ThreadingMixIn, BaseHTTPServer.HTTPServer): pass
-class ThreadingHTTPSServer (SocketServer.ThreadingMixIn, SecureHTTPServer): pass
+class ThreadingHTTPServer(SocketServer.ThreadingMixIn, BaseHTTPServer.HTTPServer):
+    pass
+class ThreadingHTTPSServer(SocketServer.ThreadingMixIn, SecureHTTPServer):
+    pass
 
 try:
     if MySQLdb != None:
         isThereMysql = True
 except NameError:
     isThereMysql = False
+
 try:
     if sqlite != None:
         isThereSqlite = True
 except NameError:
     isThereSqlite = False
+
 if isThereMysql == isThereSqlite == False:
     print "Cannot continue without any database support.\nPlease read README.\n\n"
     quit()
+
 if config['yubiDB'] == 'mysql' and (config['yubiMySQLHost'] == '' or config['yubiMySQLUser'] == '' or config['yubiMySQLPass'] == '' or config['yubiMySQLName'] == ''):
     print "Cannot continue without any MySQL configuration.\nPlease read README.\n\n"
     quit()
@@ -376,3 +405,4 @@ print "HTTP Server is running."
 
 while 1:
     time.sleep(1)
+
